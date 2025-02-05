@@ -33,7 +33,7 @@ func TestList(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "list happy path",
+			name: "list - happy path",
 			fields: fields{
 				rfs: mockRFS{
 					read: func(name string) ([]os.DirEntry, error) {
@@ -50,7 +50,7 @@ func TestList(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "list error reading directory",
+			name: "list - error reading directory",
 			fields: fields{
 				rfs: mockRFS{
 					read: func(name string) ([]os.DirEntry, error) {
@@ -63,7 +63,7 @@ func TestList(t *testing.T) {
 			wantErr: "Error reading directory: fake-error",
 		},
 		{
-			name: "missing required list arguments",
+			name: "list - missing required arguments",
 			fields: fields{
 				rfs: mockRFS{
 					read: func(name string) ([]os.DirEntry, error) {
@@ -117,7 +117,7 @@ func TestCreate(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "create happy path",
+			name: "create - happy path",
 			fields: fields{
 				fw: mockFW{
 					write: func(filePath string) (*os.File, error) {
@@ -130,20 +130,20 @@ func TestCreate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "create error reading directory",
+			name: "create - error creating file",
 			fields: fields{
 				fw: mockFW{
 					write: func(filePath string) (*os.File, error) {
 						return nil, fmt.Errorf("fake-error")
 					},
 				},
-				args: []string{"main.go", "create", "meetings"},
+				args: []string{"main.go", "create", "meetings/agendas/test_file.txt"},
 			},
 			want:    "",
 			wantErr: "Error creating file: fake-error",
 		},
 		{
-			name: "missing required list arguments",
+			name: "create - missing required arguments",
 			fields: fields{
 				fw: mockFW{
 					write: func(fileName string) (*os.File, error) {
@@ -162,6 +162,86 @@ func TestCreate(t *testing.T) {
 			t.Parallel()
 			var bytes bytes.Buffer
 			err := writeFile(tt.fields.fw, &bytes, tt.fields.args)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Equal(t, tt.wantErr, err.Error())
+			}
+			got := bytes.String()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+/*
+Tests for delete command
+*/
+type mockFD struct {
+	delete func(filePath string) error
+}
+
+func (m mockFD) DeleteFile(filePath string) error {
+	return m.delete(filePath)
+}
+
+func TestDelete(t *testing.T) {
+	t.Parallel()
+	type fields struct {
+		fd   fileDeleter
+		args []string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		want    string
+		wantErr string
+	}{
+		{
+			name: "delete - happy path",
+			fields: fields{
+				fd: mockFD{
+					delete: func(filePath string) error {
+						return nil
+					},
+				},
+				args: []string{"main.go", "delete", "test_file.txt"},
+			},
+			want:    "File deleted: test_file.txt\n",
+			wantErr: "",
+		},
+		{
+			name: "delete - error deleting file",
+			fields: fields{
+				fd: mockFD{
+					delete: func(filePath string) error {
+						return fmt.Errorf("fake-error")
+					},
+				},
+				args: []string{"main.go", "delete", "meetings/agendas/test_file.txt"},
+			},
+			want:    "",
+			wantErr: "Error deleting file: fake-error",
+		},
+		{
+			name: "delete - missing required arguments",
+			fields: fields{
+				fd: mockFD{
+					delete: func(fileName string) error {
+						return fmt.Errorf("fake-error")
+					},
+				},
+				args: []string{"main.go", "delete"},
+			},
+			want:    "",
+			wantErr: "Invalid arguments.\nUsage: go run main.go delete [file-path]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var bytes bytes.Buffer
+			err := deleteFile(tt.fields.fd, &bytes, tt.fields.args)
 			if tt.wantErr == "" {
 				assert.NoError(t, err)
 			} else {
