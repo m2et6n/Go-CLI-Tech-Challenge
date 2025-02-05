@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -176,18 +178,18 @@ func TestCreate(t *testing.T) {
 /*
 Tests for delete command
 */
-type mockFD struct {
+type mockFR struct {
 	delete func(filePath string) error
 }
 
-func (m mockFD) DeleteFile(filePath string) error {
+func (m mockFR) RemoveFile(filePath string) error {
 	return m.delete(filePath)
 }
 
 func TestDelete(t *testing.T) {
 	t.Parallel()
 	type fields struct {
-		fd   fileDeleter
+		fr   fileRemover
 		args []string
 	}
 	tests := []struct {
@@ -199,7 +201,7 @@ func TestDelete(t *testing.T) {
 		{
 			name: "delete - happy path",
 			fields: fields{
-				fd: mockFD{
+				fr: mockFR{
 					delete: func(filePath string) error {
 						return nil
 					},
@@ -212,7 +214,7 @@ func TestDelete(t *testing.T) {
 		{
 			name: "delete - error deleting file",
 			fields: fields{
-				fd: mockFD{
+				fr: mockFR{
 					delete: func(filePath string) error {
 						return fmt.Errorf("fake-error")
 					},
@@ -225,7 +227,7 @@ func TestDelete(t *testing.T) {
 		{
 			name: "delete - missing required arguments",
 			fields: fields{
-				fd: mockFD{
+				fr: mockFR{
 					delete: func(fileName string) error {
 						return fmt.Errorf("fake-error")
 					},
@@ -241,7 +243,182 @@ func TestDelete(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			var bytes bytes.Buffer
-			err := deleteFile(tt.fields.fd, &bytes, tt.fields.args)
+			err := deleteFile(tt.fields.fr, &bytes, tt.fields.args)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Equal(t, tt.wantErr, err.Error())
+			}
+			got := bytes.String()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+/*
+Tests for move command
+*/
+type mockFM struct {
+	move func(sourceFile string, destinationFile string) error
+}
+
+func (m mockFM) MoveFile(sourceFile string, destinationFile string) error {
+	return m.move(sourceFile, destinationFile)
+}
+
+func TestMove(t *testing.T) {
+	t.Parallel()
+	type fields struct {
+		fm   fileMover
+		args []string
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		want    string
+		wantErr string
+	}{
+		{
+			name: "move - happy path",
+			fields: fields{
+				fm: mockFM{
+					move: func(sourceFile string, destinationFile string) error {
+						return nil
+					},
+				},
+				args: []string{"main.go", "move", "meetings/agendas/test_file.txt", "meetings/notes/test_file.txt"},
+			},
+			want:    "File meetings/agendas/test_file.txt moved to: meetings/notes/test_file.txt\n",
+			wantErr: "",
+		},
+		{
+			name: "move - error moving file",
+			fields: fields{
+				fm: mockFM{
+					move: func(sourceFile string, destinationFile string) error {
+						return fmt.Errorf("fake-error")
+					},
+				},
+				args: []string{"main.go", "move", "meetings/agendas/test_file.txt", "meetings/notes/test_file.txt"},
+			},
+			want:    "",
+			wantErr: "Error moving file: fake-error",
+		},
+		{
+			name: "move - missing required arguments",
+			fields: fields{
+				fm: mockFM{
+					move: func(fsourceFile string, destinationFile string) error {
+						return fmt.Errorf("fake-error")
+					},
+				},
+				args: []string{"main.go", "move"},
+			},
+			want:    "",
+			wantErr: "Invalid arguments.\nUsage: go run main.go move [source-path] [destination-path]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var bytes bytes.Buffer
+			err := moveFile(tt.fields.fm, &bytes, tt.fields.args)
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Equal(t, tt.wantErr, err.Error())
+			}
+			got := bytes.String()
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// Mock implementations
+type mockFileSystem struct{}
+
+func (m mockFileSystem) ReadDir(name string) ([]os.DirEntry, error) {
+	return []os.DirEntry{mockDirEntry("sample_file.txt", false)}, nil
+}
+func (m mockFileSystem) WriteFile(filePath string) (*os.File, error) {
+	return &os.File{}, nil
+}
+func (m mockFileSystem) RemoveFile(filePath string) error {
+	return nil
+}
+func (m mockFileSystem) MoveFile(sourceFile string, destinationFile string) error {
+	return nil
+}
+
+// Test Writer to capture stdout
+type testWriter struct {
+	output strings.Builder
+}
+
+func (w *testWriter) Write(p []byte) (n int, err error) {
+	return w.output.Write(p)
+}
+
+func (w *testWriter) String() string {
+	return w.output.String()
+}
+
+// Unit Test for run function
+func TestRun(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+		want    string
+	}{
+		{
+			name:    "Unknown Command",
+			args:    []string{"go", "unknown"},
+			wantErr: "Unknown command:unknown\nUsage: go run main.go [list|create|delete|move] [args]\n",
+			want:    "",
+		},
+		{
+			name:    "Invalid Command",
+			args:    []string{"go"},
+			wantErr: "Invalid command.\nUsage: go run main.go [command] [args]\n",
+			want:    "",
+		},
+		{
+			name:    "List Command",
+			args:    []string{"go", "list", "meetings/agendas"},
+			wantErr: "",
+			want:    "sample_file.txt\n",
+		},
+		{
+			name:    "Create Command",
+			args:    []string{"go", "create", "test_file.txt"},
+			wantErr: "",
+			want:    "File created: test_file.txt\n",
+		},
+		{
+			name:    "Delete Command",
+			args:    []string{"go", "delete", "test_file.txt"},
+			wantErr: "",
+			want:    "File deleted: test_file.txt\n",
+		},
+		{
+			name:    "Move Command",
+			args:    []string{"go", "move", "source.txt", "dest.txt"},
+			wantErr: "",
+			want:    "File source.txt moved to: dest.txt\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := mockFileSystem{}
+			ctx := context.Background()
+
+			var bytes bytes.Buffer
+
+			err := run(ctx, fs, tt.args, &bytes)
+
 			if tt.wantErr == "" {
 				assert.NoError(t, err)
 			} else {
