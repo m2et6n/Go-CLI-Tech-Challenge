@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 )
 
 func main() {
@@ -28,7 +29,7 @@ func run(ctx context.Context, fs fileSystem, args []string, stdout io.Writer) er
 	}
 	command := args[1]
 
-	switch command {
+	switch strings.ToLower(command) {
 	case "list":
 		return list(fs, stdout, args)
 	case "create":

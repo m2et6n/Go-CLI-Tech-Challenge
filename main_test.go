@@ -335,6 +335,9 @@ func TestMove(t *testing.T) {
 	}
 }
 
+/*
+Tests for run function
+*/
 // Mock implementations
 type mockFileSystem struct{}
 
@@ -364,7 +367,6 @@ func (w *testWriter) String() string {
 	return w.output.String()
 }
 
-// Unit Test for run function
 func TestRun(t *testing.T) {
 	tests := []struct {
 		name    string
